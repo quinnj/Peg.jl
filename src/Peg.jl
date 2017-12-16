@@ -37,11 +37,16 @@ const DEFAULT_VIEW = View(0, "view_0", false, "", "(a=[1,2,3,1], b=[\"hey\", \"h
 function generateQuery(view)
     columns = view.columns
     actions = :([])
+    anygrouped = false
     foreach(columns) do col
         if !get(col, :unselected, false)
+            grouped = false
             expr = :(())
-            get(col, :group, false) && push!(expr.args, :(group=true))
-            !isempty(get(col, :aggregate, "")) && push!(expr.args, :(aggregate=$(Meta.parse(col.aggregate))))
+            if get(col, :group, false)
+                anygrouped = grouped = true
+                push!(expr.args, :(group=true))
+            end
+            anygrouped && !grouped && !isempty(get(col, :aggregate, "")) && push!(expr.args, :(aggregate=$(Meta.parse(col.aggregate))))
             if get(col, :sort, false)
                 push!(expr.args, :(sort=true))
                 push!(expr.args, :(sortasc=$(col.sortasc)))

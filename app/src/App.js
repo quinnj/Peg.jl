@@ -48,19 +48,19 @@ function GroupIcon({ id, group, handleGroupClick}) {
   );
 }
 
-function Column({ id, icon, name, type, data, handleOnMenuClick, menuItems, group, handleGroupClick, filter, handleFilterDone, handleFilterCodeChange}) {
+function Column({ id, icon, name, aggname, type, data, handleOnMenuClick, menuItems, group, handleGroupClick, filter, having, handleFilterDone, handleFilterCodeChange}) {
   const alignRight = icon === "REAL"
   return (
     <div className="Column">
       <div className="FloatingIcons">
         <GroupIcon id={id} group={group} handleGroupClick={handleGroupClick} />
         <img className={"FloatingIcon"} data-id={id} src={infoIcon} onClick={x => x} />
-        <Menu inner={<img className={"FloatingIcon" + (filter ? " selected visible" : "")} src={filterIcon} />} menuItems={
+        <Menu inner={<img className={"FloatingIcon" + (filter || having ? " selected visible" : "")} src={filterIcon} />} menuItems={
           [<CodeBoxInput id={id} placeholder={"filter function"} value={filter}
             handleOnBlur={handleFilterDone} handleOnChange={handleFilterCodeChange} />]
         } />
       </div>
-      <Header id={id} list={false} hide={false} icon={icon} name={name} handleOnMenuClick={handleOnMenuClick} menuItems={menuItems} />
+      <Header id={id} list={false} hide={false} icon={icon} name={aggname ? aggname : name} handleOnMenuClick={handleOnMenuClick} menuItems={menuItems} />
       {data.map((v, i) => <TableCell key={i} value={v} alignRight={alignRight} />)}
     </div>
   );
@@ -459,6 +459,13 @@ class AppManager extends Component {
     this.setState(st => ({ sourceOptionsVisible: !st.sourceOptionsVisible}))
   }
 
+  // add first grouped column: grouped col name stays, all others become aggname
+  // add N additional grouped columns (that were previously aggregated): 
+  //    existing group stay, new group col changes to name, existing agg cols stay
+  // ungroup grouped column (and there are still other grouped columns):
+  //    existing group stay, new ungroup col changes to aggname, existing agg cols stay
+  // ungroup last grouped column: 
+  //    new ungroup stays name, all others switch from aggname to name
   handleGroupClick = e => {
     let col = getId(e)
     let views = this.state.views.slice()
@@ -466,7 +473,11 @@ class AppManager extends Component {
     let groupcol = columns.splice(col, 1)[0]
     groupcol.group = !groupcol.group
     if (groupcol.group) {
+      groupcol.aggname = null
       groupcol.aggregate = ""
+    } else {
+      groupcol.aggregate = groupcol.icon === "REAL" ? "sum" : "length"
+      groupcol.aggname = groupcol.icon === "REAL" ? ("sum(" + groupcol.name + ")") : ("length(" + groupcol.name + ")")
     }
     // move column order up to front, but behind any existing grouped columns
     const idx = columns.reduce((a, b, i) => b.group ? i + 1 : a, 0)
@@ -475,12 +486,11 @@ class AppManager extends Component {
     for (let i = idx + groupcol.group; i < columns.length; i++) {
       let c = columns[i]
       if (idx === 0 && !groupcol.group) {
-        c.name = c.origname
-        c.aggregate = ""
+        c.aggname = null
       } else {
         if (!(c.aggregate || (c.compute && c.aggregated))) {
           c.aggregate = c.icon === "REAL" ? "sum" : "length"
-          c.name = c.icon === "REAL" ? ("sum(" + c.name + ")") : ("length(" + c.name + ")")
+          c.aggname = c.icon === "REAL" ? ("sum(" + c.name + ")") : ("length(" + c.name + ")")
         }
       }
     }
@@ -544,7 +554,7 @@ class AppManager extends Component {
     // calculate computeargs
     const res = Utils.parse(code)
     const colnames = columns.map((x) => x.name)
-    const args = res.args.map((x) => colnames.indexOf(x) + 1)
+    const args = res.args.map((x) => columns[colnames.indexOf(x)].col)
     const col = this.state.newColumnData.col
     if (col) {
       columns[col].name = name
@@ -552,7 +562,7 @@ class AppManager extends Component {
       columns[col].computeargs = args
       columns[col].compute = res.code
     } else {
-      columns.push({ name: name, T: "Any", icon: "COMPUTED", data: [], aggregated: aggregated, compute: res.code, computeargs: args })
+      columns.push({ name: name, origname: name, T: "Any", icon: "COMPUTED", data: [], aggregated: aggregated, compute: res.code, computeargs: args })
     }
     this.setState(st => updateColumns(st, columns), this.executeQuery)
     this.handleCancelNewColumn(e)
